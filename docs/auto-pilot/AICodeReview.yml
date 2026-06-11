@@ -1,0 +1,58 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - "src/**/*.java"
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install @google/generative-ai node-fetch
+
+      - name: Gemini 코드 리뷰
+        run: node scripts/review.js
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+
+      # 점수 계산 + PR 코멘트 작성 + 텔레그램으로 "통과/다시 생성/보류" 버튼 전송
+      # ⚠️ 자동 머지는 하지 않음 — 최종 결정은 진이가 텔레그램에서 직접 누름
+      - name: 점수 계산 + 텔레그램 알림 (버튼 포함)
+        run: node scripts/score-decision.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      # 다음 PR이 같은 번호로 다시 트리거될 때를 대비해 컨텍스트를 아티팩트로 보관
+      - name: PR 컨텍스트 저장
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-context-${{ github.event.pull_request.number }}
+          path: |
+            review-result.json
+            pr-context.json
+          retention-days: 7

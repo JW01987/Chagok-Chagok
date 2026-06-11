@@ -1,0 +1,57 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - "src/**/*.java"
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Gemini 코드 리뷰
+        run: python scripts/review.py
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+
+      # 점수 계산 + PR 코멘트 작성 + 텔레그램으로 "통과/다시 생성/보류" 버튼 전송
+      # ⚠️ 자동 머지는 하지 않음 — 최종 결정은 진이가 텔레그램에서 직접 누름
+      - name: 점수 계산 + 텔레그램 알림 (버튼 포함)
+        run: python scripts/score_decision.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: PR 컨텍스트 저장
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-context-${{ github.event.pull_request.number }}
+          path: |
+            review-result.json
+            pr-context.json
+          retention-days: 7

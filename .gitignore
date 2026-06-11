@@ -1,0 +1,15 @@
+# auto-pilot 민감 파일 — 절대 커밋 금지
+.env.auto-pilot
+.auto-pilot-state.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# 리뷰 아티팩트 (GitHub Actions 산출물)
+review-result.json
+pr-context.json
+auto-pilot.log
