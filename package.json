@@ -1,0 +1,23 @@
+{
+  "name": "chagok-chagok",
+  "version": "1.0.0",
+  "description": "",
+  "homepage": "https://github.com/JW01987/Chagok-Chagok#readme",
+  "bugs": {
+    "url": "https://github.com/JW01987/Chagok-Chagok/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JW01987/Chagok-Chagok.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}

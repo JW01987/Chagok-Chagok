@@ -3,8 +3,6 @@ name: AI Code Review
 on:
   pull_request:
     types: [opened, synchronize]
-    paths:
-      - "src/**/*.java"
 
 jobs:
   review:
