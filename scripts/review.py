@@ -74,6 +74,18 @@ def parse_gemini_response(text: str) -> dict:
     return json.loads(text.strip())
 
 
+def send_telegram_error(message: str) -> None:
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        return
+    requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
+        timeout=10,
+    )
+
+
 def main() -> None:
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
@@ -86,7 +98,23 @@ def main() -> None:
         return
 
     prompt = f"{_SYSTEM_PROMPT}\n\n[코드 diff]\n```diff\n{diff}\n```"
-    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+    try:
+        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+    except Exception as e:
+        err = str(e)
+        if "429" in err or "RESOURCE_EXHAUSTED" in err:
+            pr_number = os.environ.get("PR_NUMBER", "?")
+            send_telegram_error(
+                f"⚠️ <b>PR #{pr_number} AI 리뷰 실패 — Gemini 쿼터 초과</b>\n\n"
+                "무료 티어 일일 한도를 초과했어요.\n"
+                "내일 다시 push하거나 Google Cloud 결제를 활성화해주세요."
+            )
+        else:
+            send_telegram_error(
+                f"🚨 <b>PR #{os.environ.get('PR_NUMBER', '?')} AI 리뷰 오류</b>\n<code>{err[:300]}</code>"
+            )
+        print(f"Gemini API 오류: {err}")
+        sys.exit(1)
 
     try:
         result = parse_gemini_response(response.text)
