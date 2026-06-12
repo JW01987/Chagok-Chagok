@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import google.generativeai as genai
+from google import genai
 
 _SYSTEM_PROMPT = """당신은 숙련된 Java 백엔드 코드 리뷰어입니다.
 Spring Boot 3.x, JPA, Spring Security 기반의 금융 앱 코드를 리뷰합니다.
@@ -75,8 +75,7 @@ def parse_gemini_response(text: str) -> dict:
 
 
 def main() -> None:
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-1.5-pro")
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
     diff = get_pr_diff()
     if not diff.strip():
@@ -87,7 +86,7 @@ def main() -> None:
         return
 
     prompt = f"{_SYSTEM_PROMPT}\n\n[코드 diff]\n```diff\n{diff}\n```"
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
 
     try:
         result = parse_gemini_response(response.text)
