@@ -13,6 +13,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import requests
+
 from google import genai
 
 _SYSTEM_PROMPT = """당신은 숙련된 Java 백엔드 코드 리뷰어입니다.
