@@ -120,9 +120,12 @@ def get_pr_comments(pr_number: str) -> list:
 
 def merge_pr(pr_number: str) -> None:
     print(f"→ PR #{pr_number} 머지 중...")
+    # GITHUB_TOKEN을 환경에서 제거해 gh CLI가 자체 OAuth 토큰(repo scope)을 사용하게 함
+    env = {k: v for k, v in os.environ.items() if k != "GITHUB_TOKEN"}
     subprocess.run(
         ["gh", "pr", "merge", str(pr_number), "--squash", "--delete-branch"],
         check=True,
+        env=env,
     )
 
 
