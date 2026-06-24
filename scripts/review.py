@@ -13,6 +13,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import requests
+
 from google import genai
 
 _SYSTEM_PROMPT = """당신은 숙련된 Java 백엔드 코드 리뷰어입니다.
@@ -99,7 +101,7 @@ def main() -> None:
 
     prompt = f"{_SYSTEM_PROMPT}\n\n[코드 diff]\n```diff\n{diff}\n```"
     try:
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
     except Exception as e:
         err = str(e)
         if "429" in err or "RESOURCE_EXHAUSTED" in err:

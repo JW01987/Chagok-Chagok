@@ -126,6 +126,51 @@ def merge_pr(pr_number: str) -> None:
     )
 
 
+def get_latest_open_pr() -> dict | None:
+    """가장 최근에 업데이트된 열린 PR을 반환한다."""
+    resp = requests.get(
+        f"https://api.github.com/repos/{REPO}/pulls",
+        headers=GH_HEADERS,
+        params={"state": "open", "sort": "updated", "direction": "desc", "per_page": 1},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    prs = resp.json()
+    return prs[0] if prs else None
+
+
+def rerun_review_workflow(pr_number: str, branch: str) -> None:
+    """PR 브랜치의 가장 최근 AI 리뷰 워크플로우 실행을 재실행한다 (실패한 job만)."""
+    resp = requests.get(
+        f"https://api.github.com/repos/{REPO}/actions/runs",
+        headers=GH_HEADERS,
+        params={"branch": branch, "event": "pull_request", "per_page": 1},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    runs = resp.json().get("workflow_runs", [])
+    if not runs:
+        send_telegram(f"❌ PR #{pr_number} (<code>{branch}</code>)의 워크플로우 실행 기록을 찾지 못했어요.")
+        return
+
+    run_id = runs[0]["id"]
+    rerun_resp = requests.post(
+        f"https://api.github.com/repos/{REPO}/actions/runs/{run_id}/rerun-failed-jobs",
+        headers=GH_HEADERS,
+        timeout=15,
+    )
+    if rerun_resp.ok:
+        send_telegram(
+            f"🔁 <b>PR #{pr_number} AI 리뷰 재시작</b>\n"
+            f"브랜치: <code>{branch}</code>\n"
+            "워크플로우를 다시 실행했어요. 잠시 후 리뷰 결과가 도착할 거예요!"
+        )
+    else:
+        send_telegram(
+            f"🚨 워크플로우 재실행 실패 (run #{run_id}):\n<code>{rerun_resp.text[:200]}</code>"
+        )
+
+
 # ── TASKS.md 파싱 ─────────────────────────────────────────────────────────────
 
 def find_next_pending_task() -> dict | None:
@@ -434,6 +479,27 @@ def handle_start_command() -> None:
         send_telegram(f"🚨 BT-{task['number']} 실행 오류:\n<code>{e}</code>")
 
 
+def handle_restart_command(args: str) -> None:
+    """오류로 멈춘 AI 리뷰 워크플로우를 재시작한다. PR 번호 생략 시 가장 최근 열린 PR 사용."""
+    pr_number = args.strip()
+
+    if pr_number:
+        try:
+            pr = get_pr(pr_number)
+        except requests.HTTPError as e:
+            send_telegram(f"❌ PR #{pr_number}를 찾지 못했어요:\n<code>{e}</code>")
+            return
+    else:
+        pr = get_latest_open_pr()
+        if not pr:
+            send_telegram("❌ 열린 PR이 없어요.")
+            return
+        pr_number = str(pr["number"])
+
+    branch = pr["head"]["ref"]
+    rerun_review_workflow(pr_number, branch)
+
+
 def process_message(message: dict, state: dict) -> None:
     sender_id = str(message.get("from", {}).get("id", ""))
     if sender_id != _CHAT_ID:
@@ -451,12 +517,16 @@ def process_message(message: dict, state: dict) -> None:
 
     print(f"\n=== 메시지 수신: {text} ===")
 
-    if text in ("/시작", "/start"):
+    command, _, rest = text.partition(" ")
+    if command in ("/시작", "/start"):
         handle_start_command()
+    elif command in ("/다시시작", "/restart"):
+        handle_restart_command(rest)
     else:
         send_telegram(
             "사용 가능한 명령어:\n"
-            "/시작 — 다음 대기 태스크 시작"
+            "/시작 — 다음 대기 태스크 시작\n"
+            "/다시시작 [PR번호] — 오류로 멈춘 AI 리뷰 재시작 (번호 생략 시 최근 PR)"
         )
 
 
