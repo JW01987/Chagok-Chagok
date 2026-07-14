@@ -1,10 +1,10 @@
 # BT-01 | GitHub 저장소 구성
 
 - **최초 작성일**: 2026-06-10
-- **업데이트**: 2026-06-10
+- **업데이트**: 2026-07-14
 - **Phase**: 0 — 환경 세팅
-- **상태**: ⬜ 대기
-- **완료 기준**: 저장소 생성 + 브랜치 보호 + .gitignore + .env.example + Dependabot 활성화
+- **상태**: ✅ 완료
+- **완료 기준**: 저장소 생성 + .gitignore + .env.example + Dependabot 활성화 (브랜치 보호는 자동화 범위 제외 — BT-01-04 참고)
 
 ---
 
@@ -194,6 +194,8 @@ EXPO_PUBLIC_ENV=local
 
 ## BT-01-04 | 브랜치 보호 규칙 설정
 
+> ⚠️ BT-01 완료 기준에서 제외됨 — GitHub 저장소 관리자 권한이 필요한 웹 콘솔 작업이라 Claude Code/자동화로 처리할 수 없음. 필요할 때 아래 내용을 참고해서 수동으로 진행.
+
 **작업 유형**: 수동 (GitHub 웹)
 
 ### main 브랜치 보호
@@ -299,12 +301,12 @@ updates:
 
 ## 완료 체크리스트
 
-- [ ] BT-01-01: 저장소 생성 + monorepo 디렉토리 구조
-- [ ] BT-01-02: `.gitignore` 커밋
-- [ ] BT-01-03: `.env.example` 커밋
-- [ ] BT-01-04: 브랜치 보호 규칙 (`main`, `develop`)
-- [ ] BT-01-05: GitHub Secrets 등록
-- [ ] BT-01-06: Dependabot 활성화
+- [x] BT-01-01: 저장소 생성 + monorepo 디렉토리 구조
+- [x] BT-01-02: `.gitignore` 커밋
+- [x] BT-01-03: `.env.example` 커밋
+- [ ] BT-01-04: 브랜치 보호 규칙 (`main`, `develop`) — 완료 기준 제외, 필요 시 수동 진행
+- [ ] BT-01-05: GitHub Secrets 등록 — 수동 진행 필요 (실제 값 확보되는 대로)
+- [x] BT-01-06: Dependabot 활성화
 
 **다음 태스크**: BT-02 (백엔드 초기화), BT-03 (프론트엔드 초기화) — 병렬 진행 가능
 
