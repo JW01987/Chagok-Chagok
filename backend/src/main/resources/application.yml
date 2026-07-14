@@ -1,0 +1,15 @@
+spring:
+  profiles:
+    active: local   # 기본값. 배포 시 환경변수로 오버라이드
+  application:
+    name: chagok-backend
+
+# 공통 설정 (프로파일 무관)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
