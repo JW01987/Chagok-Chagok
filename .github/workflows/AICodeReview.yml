@@ -6,6 +6,8 @@ on:
 
 jobs:
   review:
+    # Dependabot PR은 pull_request 이벤트에서 시크릿이 주입되지 않아 항상 실패하므로 건너뜀
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
