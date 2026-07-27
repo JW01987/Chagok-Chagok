@@ -48,7 +48,7 @@ dependencies {
 	implementation 'software.amazon.awssdk:sqs'
 
 	// FCM
-	implementation 'com.google.firebase:firebase-admin:9.4.3'
+	implementation 'com.google.firebase:firebase-admin:9.10.0'
 
 	// 유틸
 	compileOnly 'org.projectlombok:lombok'
