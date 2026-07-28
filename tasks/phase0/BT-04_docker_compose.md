@@ -1,9 +1,9 @@
 # BT-04 | Docker Compose 로컬 환경
 
 - **최초 작성일**: 2026-06-10
-- **업데이트**: 2026-06-10
+- **업데이트**: 2026-07-28
 - **Phase**: 0 — 환경 세팅
-- **상태**: ⬜ 대기
+- **상태**: ✅ 완료 (`feature/bt-04-auto`)
 - **선행 태스크**: BT-02
 - **완료 기준**: `docker-compose up` → API + PostgreSQL + Redis 정상 동작 + Swagger 접근 가능
 
@@ -271,13 +271,39 @@ docker-compose down -v
 
 ## 완료 체크리스트
 
-- [ ] BT-04-01: `docker-compose.yml` 작성 완료
-- [ ] BT-04-02: `backend/Dockerfile` 작성 완료
-- [ ] BT-04-03: Flyway 디렉토리 구조 + 플레이스홀더 마이그레이션 생성
-- [ ] BT-04-04: `docker-compose up` → 전체 스택 정상 동작
+- [x] BT-04-01: `docker-compose.yml` 작성 완료
+- [x] BT-04-02: `backend/Dockerfile` 작성 완료
+- [x] BT-04-03: Flyway 디렉토리 구조 + 플레이스홀더 마이그레이션 생성
+- [x] BT-04-04: `docker-compose up -d --build` → 전체 스택 정상 동작 (postgres/redis healthy, backend UP) — 로컬에서 직접 실행하여 검증 완료
+
+### 검증 결과 (로컬 Docker Desktop, 2026-07-28)
+
+```
+$ docker compose up -d --build
+...
+ Container chagok-backend  Started
+
+$ curl http://localhost:8080/health
+{"status":"UP","timestamp":"...","service":"chagok-backend"}   # HTTP 200
+
+$ curl -o /dev/null -w "%{http_code}" http://localhost:8080/swagger-ui/index.html
+200
+
+$ docker exec chagok-postgres psql -U chagok -d chagok_db -c "\dt"
+ public | flyway_check          | table
+ public | flyway_schema_history | table
+```
+
+### 원본 스펙 대비 변경 사항 (동작 검증 중 발견한 문제 수정)
+
+- **`backend/build.gradle`**: `org.springframework.boot:spring-boot-flyway` 의존성 추가. Spring Boot 4부터 Flyway 자동 설정이 `spring-boot-autoconfigure`에서 별도 모듈로 분리되어, `flyway-core`/`flyway-database-postgresql`만으로는 마이그레이션이 전혀 실행되지 않음(로그에 Flyway 관련 출력이 전혀 없었음 — 실측으로 발견).
+- **`backend/src/main/resources/application-local.yml`**: datasource URL/redis host를 `${DB_HOST:localhost}` 형태의 환경변수 오버라이드로 변경. 기존에는 `localhost`가 하드코딩되어 있어 `local` 프로파일로 컨테이너 안에서 실행 시 `postgres`/`redis` 컨테이너에 연결할 수 없었음(docker-compose가 `SPRING_PROFILES_ACTIVE=local` + `DB_HOST=postgres` 등을 주입하는 스펙과 충돌).
+- **`docker-compose.yml`**: `backend` 서비스에 `platform: linux/amd64` 고정. `eclipse-temurin:17-jdk-alpine`/`17-jre-alpine`이 amd64 manifest만 제공해 Apple Silicon(arm64) 호스트에서 빌드가 아예 실패했음 — CI/Linux amd64에서는 네이티브로, arm64 로컬 환경에서는 에뮬레이션으로 동작.
+- **`docker-compose.yml`**: `backend.volumes: - ./backend:/app` 라인 제거. 멀티스테이지 빌드로 만든 런타임 이미지의 `/app/app.jar`를 호스트 소스 디렉터리로 통째로 덮어써 컨테이너가 기동할 수 없게 만드는 설정이라 제외함.
+- `version: '3.9'` 최상단 키 제거 (최신 Docker Compose에서 obsolete 경고 발생, 기능에는 영향 없음).
 
 **다음 태스크**: BT-07 (DB 마이그레이션)
 
 ---
 
-_최초 작성: 2026-06-10 | 업데이트: 2026-06-10_
+_최초 작성: 2026-06-10 | 업데이트: 2026-07-28_

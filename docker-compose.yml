@@ -1,0 +1,75 @@
+services:
+
+  # ────────────────────────────────
+  # PostgreSQL
+  # ────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: chagok-postgres
+    environment:
+      POSTGRES_DB: chagok_db
+      POSTGRES_USER: chagok
+      POSTGRES_PASSWORD: chagok1234
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/main/resources/db/init:/docker-entrypoint-initdb.d  # 초기화 SQL
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chagok -d chagok_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ────────────────────────────────
+  # Redis
+  # ────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: chagok-redis
+    command: redis-server --requirepass ""
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ────────────────────────────────
+  # Spring Boot 백엔드
+  # ────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      # eclipse-temurin:17-*-alpine 이미지는 amd64 manifest만 제공 — Apple Silicon(arm64)
+      # 호스트에서도 동일하게 빌드되도록 플랫폼을 고정 (에뮬레이션으로 동작, CI/amd64에서는 네이티브)
+      platforms:
+        - linux/amd64
+    platform: linux/amd64
+    container_name: chagok-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: chagok_db
+      DB_USERNAME: chagok
+      DB_PASSWORD: chagok1234
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: local-dev-secret-key-must-be-at-least-256-bits-long-string
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  postgres_data:
+  redis_data:
