@@ -9,6 +9,9 @@ scripts/auto_pilot.py
  2. 통과  → PR 머지 + TASKS.md 에서 "상태: 대기" Task를 찾아 Claude Code 자동 실행
  3. 다시 생성 → 리뷰 피드백을 반영해서 같은 브랜치에서 Claude Code 재실행
  4. 보류  → 아무 것도 하지 않고 알림만 남김
+ 5. Claude Code를 실행할 때마다 응답을 텔레그램으로 전달하고, Claude가 작업을
+    끝내지 않고 질문으로 턴을 마쳤으면 텔레그램 답장을 그대로 --resume 으로
+    이어서 전달함 (/취소로 대기 중인 세션 종료 가능)
 
 실행:
   python scripts/auto_pilot.py
@@ -300,12 +303,32 @@ docs/CONVENTIONS.md 규칙을 지키면서 아래 피드백을 반영해서 코�
 작업 완료되면 알려줘."""
 
 
-def run_claude_code(prompt: str) -> None:
+def run_claude_code(prompt: str, resume_session_id: str | None = None) -> dict:
+    """Claude Code를 1회 실행하고 결과를 텔레그램으로 전달한다.
+
+    응답 텍스트와 session_id를 반환하므로, Claude가 작업을 끝내지 않고
+    질문으로 턴을 마쳤을 때 사용자가 텔레그램으로 답장하면
+    --resume 으로 같은 세션을 이어갈 수 있다.
+    """
     print("→ Claude Code 실행 중...\n")
-    subprocess.run(
-        ["claude", "-p", prompt, "--dangerously-skip-permissions"],
-        check=True,
-    )
+    cmd = ["claude"]
+    if resume_session_id:
+        cmd += ["--resume", resume_session_id]
+    cmd += ["-p", prompt, "--dangerously-skip-permissions", "--output-format", "json"]
+
+    proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    data = json.loads(proc.stdout)
+    text = data.get("result", "")
+    session_id = data.get("session_id") or resume_session_id
+
+    print(text)
+    if text:
+        send_telegram(
+            f"🤖 <b>Claude Code 응답</b>\n{text}\n\n"
+            "↩️ 이어서 답장을 보내면 방금 그 세션에 그대로 전달돼요. "
+            "새 작업을 시작하려면 /시작, 이 세션을 종료하려면 /취소."
+        )
+    return {"text": text, "session_id": session_id, "is_error": data.get("is_error", False)}
 
 
 def _commit_logs(message: str) -> None:
@@ -327,7 +350,7 @@ def _commit_logs(message: str) -> None:
 
 # ── 액션 핸들러 ───────────────────────────────────────────────────────────────
 
-def handle_pass(pr_number: str) -> None:
+def handle_pass(pr_number: str, state: dict) -> None:
     send_telegram(f"✅ <b>PR #{pr_number} 통과 처리</b>\n머지를 진행할게요...")
 
     pr = get_pr(pr_number)
@@ -359,17 +382,16 @@ def handle_pass(pr_number: str) -> None:
         "Claude Code를 자동 실행할게요."
     )
     try:
-        run_claude_code(build_new_task_prompt(task["number"], task["title"], task["file"]))
-        send_telegram(
-            f"✅ Task-{task['number']} 완료 — Claude Code가 PR까지 생성했어요. AI 리뷰를 기다려주세요."
-        )
+        result = run_claude_code(build_new_task_prompt(task["number"], task["title"], task["file"]))
+        state["last_claude_session"] = {"session_id": result["session_id"]}
+        save_state(state)
     except subprocess.CalledProcessError as e:
         send_telegram(
             f"🚨 Task-{task['number']} 자동 실행 오류:\n<code>{e}</code>\n직접 확인이 필요해요."
         )
 
 
-def handle_retry(pr_number: str) -> None:
+def handle_retry(pr_number: str, state: dict) -> None:
     send_telegram(
         f"🔄 <b>PR #{pr_number} 다시 생성</b>\n리뷰 피드백을 반영해서 재작업할게요..."
     )
@@ -405,11 +427,12 @@ def handle_retry(pr_number: str) -> None:
         return
 
     try:
-        run_claude_code(build_retry_prompt(branch, feedback))
+        result = run_claude_code(build_retry_prompt(branch, feedback))
+        state["last_claude_session"] = {"session_id": result["session_id"]}
+        save_state(state)
         if task_number:
             append_to_task_log(task_number, "✅ 재작업 완료", f"PR #{pr_number} push — AI 리뷰 재실행 대기 중")
             _commit_logs(f"docs: Task-{task_number} 리뷰 피드백 반영 로그 추가")
-        send_telegram(f"✅ PR #{pr_number} 재작업 완료 — push 했어요. AI 리뷰가 다시 돌아갈 거예요.")
     except subprocess.CalledProcessError as e:
         send_telegram(f"🚨 PR #{pr_number} 재작업 오류:\n<code>{e}</code>")
 
@@ -418,6 +441,17 @@ def handle_hold(pr_number: str) -> None:
     send_telegram(
         f"⏸️ <b>PR #{pr_number} 보류</b>\n준비되면 다시 버튼을 눌러주세요."
     )
+
+
+def handle_resume(user_text: str, state: dict) -> None:
+    """대기 중인 Claude Code 세션에 텔레그램 답장을 그대로 전달한다."""
+    session = state["last_claude_session"]
+    try:
+        result = run_claude_code(user_text, resume_session_id=session["session_id"])
+        state["last_claude_session"] = {"session_id": result["session_id"]}
+        save_state(state)
+    except subprocess.CalledProcessError as e:
+        send_telegram(f"🚨 Claude Code 세션 재개 오류:\n<code>{e}</code>")
 
 
 # ── 메인 루프 ─────────────────────────────────────────────────────────────────
@@ -447,9 +481,9 @@ def process_callback(callback: dict, state: dict) -> None:
     print(f"\n=== 콜백 수신: {action} / PR #{pr_number} ===")
 
     if action == "PASS":
-        handle_pass(pr_number)
+        handle_pass(pr_number, state)
     elif action == "RETRY":
-        handle_retry(pr_number)
+        handle_retry(pr_number, state)
     elif action == "HOLD":
         handle_hold(pr_number)
     else:
@@ -460,7 +494,7 @@ def process_callback(callback: dict, state: dict) -> None:
     save_state(state)
 
 
-def handle_start_command() -> None:
+def handle_start_command(state: dict) -> None:
     task = find_next_pending_task()
     if not task:
         send_telegram('📋 대기 중인 작업이 없어요. tasks/ 폴더를 확인해주세요!')
@@ -471,10 +505,9 @@ def handle_start_command() -> None:
         "Claude Code를 자동 실행할게요."
     )
     try:
-        run_claude_code(build_new_task_prompt(task["number"], task["title"], task["file"]))
-        send_telegram(
-            f"✅ BT-{task['number']} 완료 — Claude Code가 PR까지 생성했어요. AI 리뷰를 기다려주세요."
-        )
+        result = run_claude_code(build_new_task_prompt(task["number"], task["title"], task["file"]))
+        state["last_claude_session"] = {"session_id": result["session_id"]}
+        save_state(state)
     except subprocess.CalledProcessError as e:
         send_telegram(f"🚨 BT-{task['number']} 실행 오류:\n<code>{e}</code>")
 
@@ -519,14 +552,24 @@ def process_message(message: dict, state: dict) -> None:
 
     command, _, rest = text.partition(" ")
     if command in ("/시작", "/start"):
-        handle_start_command()
+        handle_start_command(state)
     elif command in ("/다시시작", "/restart"):
         handle_restart_command(rest)
+    elif command in ("/취소", "/cancel"):
+        if state.get("last_claude_session"):
+            state["last_claude_session"] = None
+            save_state(state)
+            send_telegram("대기 중이던 Claude Code 세션을 종료했어요.")
+        else:
+            send_telegram("종료할 대기 중인 세션이 없어요.")
+    elif state.get("last_claude_session"):
+        handle_resume(text, state)
     else:
         send_telegram(
             "사용 가능한 명령어:\n"
             "/시작 — 다음 대기 태스크 시작\n"
-            "/다시시작 [PR번호] — 오류로 멈춘 AI 리뷰 재시작 (번호 생략 시 최근 PR)"
+            "/다시시작 [PR번호] — 오류로 멈춘 AI 리뷰 재시작 (번호 생략 시 최근 PR)\n"
+            "/취소 — 대기 중인 Claude Code 세션 종료"
         )
 
 
