@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0  # 전체 히스토리 스캔
 
       - name: Run GitLeaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
