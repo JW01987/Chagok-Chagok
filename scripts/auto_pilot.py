@@ -122,10 +122,20 @@ def get_pr_comments(pr_number: str) -> list:
 
 
 def merge_pr(pr_number: str) -> None:
+    """PR을 squash 머지한다.
+
+    셸에 남아있는 stale GITHUB_TOKEN 환경변수가 gh auth login 인증보다
+    우선 적용되면서 권한 오류를 내는 경우가 있어, gh 실행 시에는 그
+    환경변수를 제거한다 (gh pr create에서 겪었던 것과 동일한 원인).
+    """
     print(f"→ PR #{pr_number} 머지 중...")
+    env = {k: v for k, v in os.environ.items() if k != "GITHUB_TOKEN"}
     subprocess.run(
         ["gh", "pr", "merge", str(pr_number), "--squash", "--delete-branch"],
         check=True,
+        env=env,
+        capture_output=True,
+        text=True,
     )
 
 
@@ -362,7 +372,8 @@ def handle_pass(pr_number: str, state: dict) -> None:
     try:
         merge_pr(pr_number)
     except subprocess.CalledProcessError as e:
-        send_telegram(f"🚨 PR #{pr_number} 머지 실패:\n<code>{e}</code>")
+        detail = (e.stderr or e.stdout or str(e)).strip()
+        send_telegram(f"🚨 PR #{pr_number} 머지 실패:\n<code>{detail}</code>")
         return
 
     # 머지된 Task 로그 기록
