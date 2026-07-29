@@ -40,6 +40,7 @@ load_dotenv(dotenv_path=_ROOT / ".env.auto-pilot")
 
 POLL_INTERVAL = 15  # 초
 STATE_FILE = _ROOT / ".auto-pilot-state.json"
+LOCK_FILE = _ROOT / ".auto-pilot.lock"
 TASKS_DIR = _ROOT / "tasks"
 LOGS_DIR = _ROOT / "docs" / "logs"
 CONVENTIONS_FILE = "docs/CONVENTIONS.md"
@@ -68,6 +69,38 @@ def save_state(state: dict) -> None:
     STATE_FILE.write_text(
         json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+
+
+# ── 중복 실행 방지 ────────────────────────────────────────────────────────────
+
+def acquire_lock() -> None:
+    """이미 돌고 있는 auto_pilot.py가 있으면 새 프로세스를 바로 종료한다.
+
+    두 프로세스가 동시에 텔레그램을 폴링하면 같은 업데이트를 중복으로
+    받아 작업이 두 번 실행될 수 있어서, PID 락파일로 막는다.
+    """
+    if LOCK_FILE.exists():
+        try:
+            existing_pid = int(LOCK_FILE.read_text().strip())
+            os.kill(existing_pid, 0)  # 살아있으면 예외 없이 통과
+        except (ValueError, ProcessLookupError):
+            print("⚠️ 이전 실행이 비정상 종료된 것 같아요. lock 파일을 정리하고 새로 시작할게요.")
+        except PermissionError:
+            print(f"🚫 auto_pilot.py가 이미 실행 중이에요 (PID {existing_pid}). 종료합니다.")
+            sys.exit(1)
+        else:
+            print(f"🚫 auto_pilot.py가 이미 실행 중이에요 (PID {existing_pid}). 종료합니다.")
+            sys.exit(1)
+
+    LOCK_FILE.write_text(str(os.getpid()))
+
+
+def release_lock() -> None:
+    try:
+        if LOCK_FILE.exists() and int(LOCK_FILE.read_text().strip()) == os.getpid():
+            LOCK_FILE.unlink()
+    except (ValueError, OSError):
+        pass
 
 
 # ── 텔레그램 ──────────────────────────────────────────────────────────────────
@@ -599,7 +632,9 @@ def poll_loop() -> None:
                     process_callback(update["callback_query"], state)
                 elif "message" in update:
                     process_message(update["message"], state)
-            save_state(state)
+                # 업데이트 하나 처리할 때마다 저장 — 배치 중간에 예외가 나도
+                # 이미 처리한 것까지는 오프셋/이력이 남아 재처리되지 않는다.
+                save_state(state)
         except Exception as e:
             print(f"[폴링 오류] {e}")
 
@@ -607,4 +642,8 @@ def poll_loop() -> None:
 
 
 if __name__ == "__main__":
-    poll_loop()
+    acquire_lock()
+    try:
+        poll_loop()
+    finally:
+        release_lock()

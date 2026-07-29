@@ -10,6 +10,7 @@
 # ========================
 .env.auto-pilot
 .auto-pilot-state.json
+.auto-pilot.lock
 
 # ========================
 # Backend (Spring Boot)
