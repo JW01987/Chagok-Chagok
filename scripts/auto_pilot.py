@@ -251,6 +251,34 @@ def find_task_by_number(task_number: str) -> dict | None:
     }
 
 
+def mark_task_completed(task_number: str, pr_number: str, branch: str) -> Path | None:
+    """머지된 Task 파일의 상태를 완료로 표시한다.
+
+    이걸 안 해두면 find_next_pending_task()가 이미 머지된 Task를 계속
+    "대기"로 착각해서 다시 골라버리고, Claude Code가 매번 "이미 완료된
+    작업인데 다시 만들까요?"를 물어보게 된다.
+    """
+    task_info = find_task_by_number(task_number)
+    if not task_info:
+        return None
+
+    task_file = _ROOT / task_info["file"]
+    content = task_file.read_text(encoding="utf-8")
+    updated = re.sub(
+        r"^- \*\*상태\*\*:.*$",
+        f"- **상태**: ✅ 완료 (PR #{pr_number}, `{branch}` → `main`)",
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if updated == content:
+        return None
+
+    task_file.write_text(updated, encoding="utf-8")
+    print(f"→ Task-{task_number} 상태를 완료로 표시: {task_info['file']}")
+    return task_file
+
+
 def task_log_path(task_number: str) -> Path:
     date_str = datetime.now().strftime("%Y%m%d")
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -374,8 +402,8 @@ def run_claude_code(prompt: str, resume_session_id: str | None = None) -> dict:
     return {"text": text, "session_id": session_id, "is_error": data.get("is_error", False)}
 
 
-def _commit_logs(message: str) -> None:
-    """docs/logs/ 변경사항을 main 브랜치에 직접 커밋·푸시한다.
+def _commit_logs(message: str, extra_paths: list[Path] | None = None) -> None:
+    """docs/logs/ (+ extra_paths) 변경사항을 main 브랜치에 직접 커밋·푸시한다.
 
     handle_pass()가 PR을 squash 머지한 직후 호출되는데, 로컬 main은
     그 머지 커밋을 아직 안 받은 상태라 그냥 push하면 non-fast-forward로
@@ -387,10 +415,11 @@ def _commit_logs(message: str) -> None:
     try:
         subprocess.run(["git", "checkout", "main"], check=True, capture_output=True, text=True)
         subprocess.run(
-            ["git", "pull", "--rebase", "origin", "main"],
+            ["git", "pull", "--rebase", "--autostash", "origin", "main"],
             check=True, capture_output=True, text=True,
         )
-        subprocess.run(["git", "add", str(LOGS_DIR)], check=True, capture_output=True, text=True)
+        for path in [LOGS_DIR, *(extra_paths or [])]:
+            subprocess.run(["git", "add", str(path)], check=True, capture_output=True, text=True)
         result = subprocess.run(
             ["git", "diff", "--cached", "--quiet"],
             capture_output=True, text=True,
@@ -404,7 +433,7 @@ def _commit_logs(message: str) -> None:
         except subprocess.CalledProcessError:
             # 그 사이 원격이 또 움직였을 수 있으니 한 번 더 동기화하고 재시도
             subprocess.run(
-                ["git", "pull", "--rebase", "origin", "main"],
+                ["git", "pull", "--rebase", "--autostash", "origin", "main"],
                 check=True, capture_output=True, text=True,
             )
             subprocess.run(["git", "push", "origin", "main"], check=True, capture_output=True, text=True)
@@ -436,10 +465,14 @@ def handle_pass(pr_number: str, state: dict) -> None:
         send_telegram(f"🚨 PR #{pr_number} 머지 실패:\n<code>{detail}</code>")
         return
 
-    # 머지된 Task 로그 기록
+    # 머지된 Task 상태를 완료로 표시 + 로그 기록
     if merged_task_number:
+        task_file = mark_task_completed(merged_task_number, pr_number, merged_branch)
         create_task_log(merged_task_number, merged_task_title, pr_number, merged_branch)
-        _commit_logs(f"docs: Task-{merged_task_number} 작업 로그 추가")
+        _commit_logs(
+            f"docs: Task-{merged_task_number} 완료 처리 + 작업 로그 추가",
+            extra_paths=[task_file] if task_file else None,
+        )
 
     send_telegram(f"🎉 PR #{pr_number} 머지 완료! (CD가 자동으로 배포할 거예요)")
 
