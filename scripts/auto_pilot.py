@@ -375,20 +375,47 @@ def run_claude_code(prompt: str, resume_session_id: str | None = None) -> dict:
 
 
 def _commit_logs(message: str) -> None:
-    """docs/logs/ 변경사항을 main 브랜치에 직접 커밋·푸시한다."""
+    """docs/logs/ 변경사항을 main 브랜치에 직접 커밋·푸시한다.
+
+    handle_pass()가 PR을 squash 머지한 직후 호출되는데, 로컬 main은
+    그 머지 커밋을 아직 안 받은 상태라 그냥 push하면 non-fast-forward로
+    거의 매번 실패했다. 그런데도 실패를 그냥 삼키고 넘어가서, 로그 커밋이
+    로컬에만 쌓이고 원격에는 며칠씩 안 올라가는 일이 있었다.
+    커밋 전에 최신 main을 받아오고, push 실패 시 한 번 더 동기화 후
+    재시도하며, 그래도 실패하면 텔레그램으로 알린다.
+    """
     try:
-        subprocess.run(["git", "checkout", "main"], check=True, capture_output=True)
-        subprocess.run(["git", "add", str(LOGS_DIR)], check=True, capture_output=True)
+        subprocess.run(["git", "checkout", "main"], check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "pull", "--rebase", "origin", "main"],
+            check=True, capture_output=True, text=True,
+        )
+        subprocess.run(["git", "add", str(LOGS_DIR)], check=True, capture_output=True, text=True)
         result = subprocess.run(
             ["git", "diff", "--cached", "--quiet"],
-            capture_output=True,
+            capture_output=True, text=True,
         )
-        if result.returncode != 0:  # staged 변경사항이 있을 때만 커밋
-            subprocess.run(["git", "commit", "-m", message], check=True, capture_output=True)
-            subprocess.run(["git", "push", "origin", "main"], check=True, capture_output=True)
-            print(f"→ 로그 커밋 완료: {message}")
+        if result.returncode == 0:  # staged 변경사항 없음
+            return
+
+        subprocess.run(["git", "commit", "-m", message], check=True, capture_output=True, text=True)
+        try:
+            subprocess.run(["git", "push", "origin", "main"], check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError:
+            # 그 사이 원격이 또 움직였을 수 있으니 한 번 더 동기화하고 재시도
+            subprocess.run(
+                ["git", "pull", "--rebase", "origin", "main"],
+                check=True, capture_output=True, text=True,
+            )
+            subprocess.run(["git", "push", "origin", "main"], check=True, capture_output=True, text=True)
+
+        print(f"→ 로그 커밋 완료: {message}")
     except subprocess.CalledProcessError as e:
-        print(f"[로그 커밋 실패 — 무시하고 계속] {e}")
+        detail = (e.stderr or e.stdout or str(e)).strip()
+        print(f"[로그 커밋 실패] {detail}")
+        send_telegram(
+            f"⚠️ 작업 로그 커밋/푸시 실패 — 로컬에만 남아있어요. 수동으로 확인해주세요:\n<code>{detail[:300]}</code>"
+        )
 
 
 # ── 액션 핸들러 ───────────────────────────────────────────────────────────────
