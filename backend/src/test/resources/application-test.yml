@@ -1,0 +1,27 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:chagok_test_db}
+    username: ${DB_USERNAME:chagok}
+    password: ${DB_PASSWORD:chagok1234}
+  jpa:
+    hibernate:
+      ddl-auto: create-drop  # 테스트마다 초기화
+    show-sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    clean-on-validation-error: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+logging:
+  level:
+    com.chagok: WARN
+    org.springframework.security: WARN
+
+jwt:
+  secret: ${JWT_SECRET:test-secret-key-must-be-at-least-256-bits-long-string}
+  access-expiration-ms: 900000
+  refresh-expiration-ms: 2592000000

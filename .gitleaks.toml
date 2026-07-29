@@ -1,0 +1,21 @@
+title = "차곡차곡 GitLeaks 설정"
+
+[extend]
+# 기본 규칙 사용
+useDefault = true
+
+[[allowlists]]
+description = "테스트/예시 파일 허용"
+paths = [
+  ".env.example",
+  "src/test/.*",
+  "docs/.*"
+]
+
+[[allowlists]]
+description = "로컬 개발용 더미 시크릿 허용"
+regexes = [
+  "local-dev-secret-key",
+  "test-secret-key",
+  "chagok1234"
+]
