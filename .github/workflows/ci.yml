@@ -101,7 +101,7 @@ jobs:
           JWT_SECRET: test-secret-key-must-be-at-least-256-bits-long-string
 
       - name: Publish Test Report
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         if: always()
         with:
           name: Backend Tests
