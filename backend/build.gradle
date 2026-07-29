@@ -33,6 +33,7 @@ dependencies {
 	runtimeOnly 'org.postgresql:postgresql'
 	implementation 'org.flywaydb:flyway-core'
 	implementation 'org.flywaydb:flyway-database-postgresql'
+	implementation 'org.springframework.boot:spring-boot-flyway' // Spring Boot 4부터 Flyway 자동 설정이 별도 모듈로 분리됨
 
 	// JWT
 	implementation 'io.jsonwebtoken:jjwt-api:0.13.0'
