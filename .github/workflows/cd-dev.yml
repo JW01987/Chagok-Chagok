@@ -1,0 +1,116 @@
+name: CD — Development
+
+on:
+  push:
+    branches: [ develop ]
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: chagok-backend
+
+jobs:
+  deploy:
+    name: Deploy to Dev Server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Build JAR (테스트 제외)
+        working-directory: backend
+        run: |
+          chmod +x gradlew
+          ./gradlew bootJar --no-daemon -x test
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest ./backend
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: ECR_REGISTRY,ECR_REPOSITORY,IMAGE_TAG,DB_PASSWORD,JWT_SECRET
+          script: |
+            # ECR 로그인
+            aws ecr get-login-password --region ap-northeast-2 | \
+              docker login --username AWS --password-stdin $ECR_REGISTRY
+
+            # 최신 이미지 pull
+            docker pull $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+            # 기존 컨테이너 종료
+            docker stop chagok-backend || true
+            docker rm chagok-backend || true
+
+            # 새 컨테이너 실행
+            docker run -d \
+              --name chagok-backend \
+              --restart unless-stopped \
+              -p 8080:8080 \
+              -e SPRING_PROFILES_ACTIVE=dev \
+              -e DB_HOST=${{ secrets.DB_HOST }} \
+              -e DB_PORT=5432 \
+              -e DB_NAME=chagok_db \
+              -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
+              -e DB_PASSWORD=$DB_PASSWORD \
+              -e REDIS_HOST=${{ secrets.REDIS_HOST }} \
+              -e REDIS_PORT=6379 \
+              -e JWT_SECRET=$JWT_SECRET \
+              $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+            # Health Check 대기 (최대 60초)
+            for i in $(seq 1 12); do
+              if curl -sf http://localhost:8080/health; then
+                echo "✅ Health check passed"
+                break
+              fi
+              echo "⏳ Waiting... ($i/12)"
+              sleep 5
+            done
+
+            # 오래된 이미지 정리
+            docker image prune -f
+
+      - name: Notify deployment result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ 개발 서버 배포 완료: ${{ github.sha }}"
+          else
+            echo "❌ 개발 서버 배포 실패"
+          fi
