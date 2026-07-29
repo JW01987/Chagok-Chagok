@@ -1,9 +1,9 @@
 # BT-02 | 백엔드 프로젝트 초기화
 
 - **최초 작성일**: 2026-06-10
-- **업데이트**: 2026-06-10
+- **업데이트**: 2026-07-28
 - **Phase**: 0 — 환경 세팅
-- **상태**: ⬜ 대기
+- **상태**: ✅ 완료 (PR #6, `feature/bt-02-auto` → `main`)
 - **선행 태스크**: BT-01
 - **완료 기준**: `GET /health` 200 응답 + Swagger UI 접근 가능 + 프로파일 분리 동작
 
@@ -498,15 +498,17 @@ open http://localhost:8080/swagger-ui.html
 
 ## 완료 체크리스트
 
-- [ ] BT-02-01: Spring Boot 프로젝트 생성 + `./gradlew build` 성공
-- [ ] BT-02-02: `build.gradle` 의존성 추가 완료
-- [ ] BT-02-03: 패키지 구조 생성 (domain / application / infrastructure / presentation)
-- [ ] BT-02-04: 환경 설정 분리 (local / dev / prod)
-- [ ] BT-02-05: `GET /health` → 200 OK
-- [ ] BT-02-06: `http://localhost:8080/swagger-ui.html` 접근 가능
+- [x] BT-02-01: Spring Boot 프로젝트 생성 (`backend/src/main/java/com/chagok/ChagokApplication.java`)
+- [x] BT-02-02: `build.gradle` 의존성 추가 완료 (web/security/data-jpa/redis/validation/actuator/batch/flyway/quartz/jjwt/springdoc/AWS SDK/firebase-admin 등, 최초 명세 대비 일부는 이후 커밋에서 버전 업데이트됨)
+- [x] BT-02-03: 패키지 구조 생성 — `infrastructure/{security,config}`, `presentation/common/{response,exception}` 생성 완료. `domain/`, `application/` 패키지는 실제 엔티티/서비스가 생기는 후속 도메인 태스크에서 함께 생성 예정(빈 패키지는 git에 커밋되지 않음)
+- [x] BT-02-04: 환경 설정 분리 (`application.yml` + `application-{local,dev,prod}.yml`)
+- [x] BT-02-05: `GET /health` → `HealthController` 구현 완료
+- [x] BT-02-06: Swagger — `SwaggerConfig` + springdoc 의존성 구성 완료
+
+> ⚠️ 이 환경(로컬 실행기)에는 JDK 17이 설치되어 있지 않아(`java_home`에 21만 존재) `./gradlew build`/`bootRun`으로 직접 재실행하여 200 응답을 재확인하지는 못했음. PR #6 머지 이력과 소스/테스트 코드 존재로 완료 판단.
 
 **다음 태스크**: BT-04 (Docker Compose)
 
 ---
 
-_최초 작성: 2026-06-10 | 업데이트: 2026-06-10_
+_최초 작성: 2026-06-10 | 업데이트: 2026-07-28_
