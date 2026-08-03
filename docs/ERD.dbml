@@ -1,0 +1,312 @@
+// 차곡차곡 ERD — dbdiagram.io 에서 렌더링
+// https://dbdiagram.io
+
+Table users {
+  id bigserial [pk]
+  email varchar(255) [unique, not null]
+  password_hash varchar(255)
+  nickname varchar(50) [not null]
+  status varchar(20) [not null, note: 'ACTIVE | LOCKED | WITHDRAWN']
+  login_fail_count smallint [default: 0]
+  locked_until timestamp
+  last_login_at timestamp
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  deleted_at timestamptz
+}
+
+Table user_oauth {
+  id bigserial [pk]
+  user_id bigint [ref: > users.id, not null]
+  provider varchar(20) [not null, note: 'KAKAO | APPLE']
+  provider_user_id varchar(255) [not null]
+  access_token_encrypted text
+  refresh_token_encrypted text
+  token_expires_at timestamp
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes { (provider, provider_user_id) [unique] }
+}
+
+Table refresh_tokens {
+  id bigserial [pk]
+  user_id bigint [ref: > users.id, not null]
+  token_hash varchar(255) [unique, not null]
+  device_info varchar(255)
+  ip_address varchar(45)
+  expires_at timestamp [not null]
+  revoked_at timestamp
+  created_at timestamptz [not null]
+}
+
+Table user_onboarding {
+  id bigserial [pk]
+  user_id bigint [ref: - users.id, unique, not null]
+  investment_type varchar(20) [not null, note: 'SAFE | BALANCED | GROWTH | KOREA_FOCUSED']
+  monthly_amount int [not null]
+  goal_type varchar(20) [not null, note: 'LUMP_SUM | RETIREMENT | FREE']
+  goal_amount int
+  goal_period_months smallint
+  salary_day smallint
+  onboarding_completed_at timestamp
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table portfolio_templates {
+  id bigserial [pk]
+  code varchar(50) [unique, not null]
+  name varchar(100) [not null]
+  description text [not null]
+  investment_type varchar(20) [not null]
+  expected_return_min decimal(4,2) [not null]
+  expected_return_max decimal(4,2) [not null]
+  mdd decimal(5,2)
+  volatility decimal(5,2)
+  rebalance_threshold decimal(4,2) [default: 5.00]
+  is_active boolean [default: true]
+  display_order smallint [default: 0]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table etfs {
+  id bigserial [pk]
+  ticker varchar(20) [unique, not null]
+  name varchar(100) [not null]
+  exchange varchar(10) [not null, note: 'KRX | NYSE | NASDAQ']
+  asset_class varchar(20) [not null, note: 'STOCK | BOND | GOLD | COMMODITY | REAL_ESTATE']
+  currency char(3) [default: 'KRW']
+  management_company varchar(100)
+  expense_ratio decimal(4,3)
+  is_active boolean [default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table portfolio_allocations {
+  id bigserial [pk]
+  portfolio_template_id bigint [ref: > portfolio_templates.id, not null]
+  etf_id bigint [ref: > etfs.id, not null]
+  target_ratio decimal(5,2) [not null]
+  display_order smallint [default: 0]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes { (portfolio_template_id, etf_id) [unique] }
+}
+
+Table backtest_returns {
+  id bigserial [pk]
+  portfolio_template_id bigint [ref: > portfolio_templates.id, not null]
+  year_month char(7) [not null]
+  return_rate decimal(6,3) [not null]
+  cumulative_return_rate decimal(8,3)
+  created_at timestamptz [not null]
+  indexes { (portfolio_template_id, year_month) [unique] }
+}
+
+Table etf_prices {
+  id bigserial [pk]
+  etf_id bigint [ref: > etfs.id, not null]
+  trade_date date [not null]
+  close_price decimal(12,2) [not null]
+  open_price decimal(12,2)
+  high_price decimal(12,2)
+  low_price decimal(12,2)
+  volume bigint
+  created_at timestamptz [not null]
+  indexes { (etf_id, trade_date) [unique] }
+}
+
+Table user_portfolios {
+  id bigserial [pk]
+  user_id bigint [ref: > users.id, not null]
+  portfolio_template_id bigint [ref: > portfolio_templates.id, not null]
+  status varchar(20) [not null, note: 'ACTIVE | PAUSED | TERMINATED']
+  selected_at timestamp [not null]
+  terminated_at timestamp
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table user_asset_holdings {
+  id bigserial [pk]
+  user_portfolio_id bigint [ref: > user_portfolios.id, not null]
+  etf_id bigint [ref: > etfs.id, not null]
+  quantity decimal(12,4) [not null]
+  average_buy_price decimal(12,2) [not null]
+  current_price decimal(12,2)
+  current_ratio decimal(5,2)
+  synced_at timestamp [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes { (user_portfolio_id, etf_id) [unique] }
+}
+
+Table savings_plans {
+  id bigserial [pk]
+  user_id bigint [ref: > users.id, not null]
+  user_portfolio_id bigint [ref: > user_portfolios.id, not null]
+  status varchar(20) [not null, note: 'ACTIVE | PAUSED | TERMINATED']
+  amount int [not null]
+  amount_type varchar(20) [not null, note: 'FIXED | SALARY_RATIO']
+  salary_ratio decimal(4,2)
+  frequency varchar(20) [not null, note: 'MONTHLY | BIMONTHLY | WEEKLY']
+  day_of_month smallint
+  day_of_week smallint
+  purchase_method varchar(20) [not null, note: 'LUMP_SUM | DCA']
+  dca_count smallint [default: 4]
+  pause_reason varchar(255)
+  pause_until timestamp
+  next_schedule_at timestamp
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes { (status, next_schedule_at) }
+}
+
+Table savings_executions {
+  id bigserial [pk]
+  savings_plan_id bigint [ref: > savings_plans.id, not null]
+  scheduled_at timestamp [not null]
+  executed_at timestamp
+  status varchar(20) [not null, note: 'PENDING | IN_PROGRESS | SUCCESS | FAILED | SKIPPED']
+  total_amount int [not null]
+  fail_reason text
+  retry_count smallint [default: 0]
+  last_retried_at timestamp
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes { (savings_plan_id, scheduled_at) [unique] }
+}
+
+Table savings_execution_items {
+  id bigserial [pk]
+  savings_execution_id bigint [ref: > savings_executions.id, not null]
+  etf_id bigint [ref: > etfs.id, not null]
+  sequence smallint [not null]
+  scheduled_buy_at timestamp [not null]
+  executed_buy_at timestamp
+  amount int [not null]
+  quantity decimal(12,4)
+  buy_price decimal(12,2)
+  status varchar(20) [not null, note: 'PENDING | SUCCESS | FAILED']
+  order_id varchar(100)
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table brokerage_accounts {
+  id bigserial [pk]
+  user_id bigint [ref: > users.id, not null]
+  brokerage varchar(20) [not null, note: 'KIS | KIWOOM']
+  account_number_encrypted varchar(255) [not null]
+  account_alias varchar(50)
+  access_token_encrypted text
+  token_expires_at timestamp
+  cash_balance bigint [default: 0]
+  balance_synced_at timestamp
+  is_primary boolean [default: false]
+  status varchar(20) [not null, note: 'CONNECTED | DISCONNECTED | ERROR']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table notification_settings {
+  id bigserial [pk]
+  user_id bigint [ref: - users.id, unique, not null]
+  savings_reminder boolean [default: true]
+  savings_reminder_days_before smallint [default: 3]
+  savings_completed boolean [default: true]
+  insufficient_balance boolean [default: true]
+  weekly_report boolean [default: true]
+  rebalancing_alert boolean [default: true]
+  goal_milestone boolean [default: true]
+  market_alert boolean [default: false]
+  channel_push boolean [default: true]
+  channel_kakao boolean [default: false]
+  channel_email boolean [default: false]
+  quiet_start_time time
+  quiet_end_time time
+  fcm_token varchar(255)
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table notification_logs {
+  id bigserial [pk]
+  user_id bigint [ref: > users.id, not null]
+  type varchar(50) [not null]
+  channel varchar(20) [not null, note: 'PUSH | KAKAO | EMAIL']
+  title varchar(255) [not null]
+  body text [not null]
+  reference_id bigint
+  reference_type varchar(50)
+  status varchar(20) [not null, note: 'SENT | FAILED | SKIPPED']
+  sent_at timestamp
+  fail_reason text
+  created_at timestamptz [not null]
+}
+
+Table monthly_reports {
+  id bigserial [pk]
+  user_id bigint [ref: > users.id, not null]
+  year_month char(7) [not null]
+  total_invested bigint [not null]
+  total_valuation bigint [not null]
+  monthly_return_rate decimal(6,3) [not null]
+  cumulative_invested bigint [not null]
+  cumulative_valuation bigint [not null]
+  cumulative_return_rate decimal(8,3) [not null]
+  goal_achievement_rate decimal(5,2)
+  peer_avg_return_rate decimal(6,3)
+  report_image_url varchar(500)
+  sent_at timestamp
+  status varchar(20) [not null, note: 'GENERATED | SENT | FAILED']
+  created_at timestamptz [not null]
+  indexes { (user_id, year_month) [unique] }
+}
+
+Table subscription_plans {
+  id bigserial [pk]
+  code varchar(30) [unique, not null]
+  name varchar(50) [not null]
+  price_monthly int [not null]
+  description text
+  is_active boolean [default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table subscription_plan_features {
+  id bigserial [pk]
+  subscription_plan_id bigint [ref: > subscription_plans.id, not null]
+  feature_key varchar(100) [not null]
+  created_at timestamptz [not null]
+  indexes { (subscription_plan_id, feature_key) [unique] }
+}
+
+Table user_subscriptions {
+  id bigserial [pk]
+  user_id bigint [ref: - users.id, unique, not null]
+  subscription_plan_id bigint [ref: > subscription_plans.id, not null]
+  status varchar(20) [not null, note: 'ACTIVE | EXPIRED | CANCELLED']
+  started_at timestamp [not null]
+  expires_at timestamp
+  cancelled_at timestamp
+  payment_method varchar(50)
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table admin_users {
+  id bigserial [pk]
+  email varchar(255) [unique, not null]
+  password_hash varchar(255) [not null]
+  name varchar(50) [not null]
+  role varchar(30) [not null, note: 'SUPER_ADMIN | CONTENT_MANAGER']
+  last_login_at timestamp
+  last_login_ip varchar(45)
+  is_active boolean [default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
