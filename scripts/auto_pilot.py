@@ -22,6 +22,7 @@ scripts/auto_pilot.py
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import re
@@ -122,6 +123,17 @@ def answer_callback(callback_query_id: str, text: str) -> None:
     )
 
 
+def esc(value: object) -> str:
+    """텔레그램 HTML parse_mode에 끼워넣을 동적인 값을 이스케이프한다.
+
+    Claude 응답, git/gh 에러 메시지 등에 <, >, & 가 섞여 있으면
+    "Unsupported start tag" 로 전송 자체가 실패해서 메시지가 통째로
+    안 온다. <b>, <code> 같은 우리가 직접 쓰는 리터럴 태그는 이스케이프
+    하면 안 되니, 끼워넣는 값에만 개별적으로 적용한다.
+    """
+    return html.escape(str(value))
+
+
 def send_telegram(message: str) -> None:
     resp = requests.post(
         f"{TG_BASE}/sendMessage",
@@ -196,7 +208,7 @@ def rerun_review_workflow(pr_number: str, branch: str) -> None:
     resp.raise_for_status()
     runs = resp.json().get("workflow_runs", [])
     if not runs:
-        send_telegram(f"❌ PR #{pr_number} (<code>{branch}</code>)의 워크플로우 실행 기록을 찾지 못했어요.")
+        send_telegram(f"❌ PR #{pr_number} (<code>{esc(branch)}</code>)의 워크플로우 실행 기록을 찾지 못했어요.")
         return
 
     run_id = runs[0]["id"]
@@ -208,12 +220,12 @@ def rerun_review_workflow(pr_number: str, branch: str) -> None:
     if rerun_resp.ok:
         send_telegram(
             f"🔁 <b>PR #{pr_number} AI 리뷰 재시작</b>\n"
-            f"브랜치: <code>{branch}</code>\n"
+            f"브랜치: <code>{esc(branch)}</code>\n"
             "워크플로우를 다시 실행했어요. 잠시 후 리뷰 결과가 도착할 거예요!"
         )
     else:
         send_telegram(
-            f"🚨 워크플로우 재실행 실패 (run #{run_id}):\n<code>{rerun_resp.text[:200]}</code>"
+            f"🚨 워크플로우 재실행 실패 (run #{run_id}):\n<code>{esc(rerun_resp.text[:200])}</code>"
         )
 
 
@@ -395,7 +407,7 @@ def run_claude_code(prompt: str, resume_session_id: str | None = None) -> dict:
     print(text)
     if text:
         send_telegram(
-            f"🤖 <b>Claude Code 응답</b>\n{text}\n\n"
+            f"🤖 <b>Claude Code 응답</b>\n{esc(text)}\n\n"
             "↩️ 이어서 답장을 보내면 방금 그 세션에 그대로 전달돼요. "
             "새 작업을 시작하려면 /시작, 이 세션을 종료하려면 /취소."
         )
@@ -443,7 +455,7 @@ def _commit_logs(message: str, extra_paths: list[Path] | None = None) -> None:
         detail = (e.stderr or e.stdout or str(e)).strip()
         print(f"[로그 커밋 실패] {detail}")
         send_telegram(
-            f"⚠️ 작업 로그 커밋/푸시 실패 — 로컬에만 남아있어요. 수동으로 확인해주세요:\n<code>{detail[:300]}</code>"
+            f"⚠️ 작업 로그 커밋/푸시 실패 — 로컬에만 남아있어요. 수동으로 확인해주세요:\n<code>{esc(detail[:300])}</code>"
         )
 
 
@@ -462,7 +474,7 @@ def handle_pass(pr_number: str, state: dict) -> None:
         merge_pr(pr_number)
     except subprocess.CalledProcessError as e:
         detail = (e.stderr or e.stdout or str(e)).strip()
-        send_telegram(f"🚨 PR #{pr_number} 머지 실패:\n<code>{detail}</code>")
+        send_telegram(f"🚨 PR #{pr_number} 머지 실패:\n<code>{esc(detail)}</code>")
         return
 
     # 머지된 Task 상태를 완료로 표시 + 로그 기록
@@ -482,7 +494,7 @@ def handle_pass(pr_number: str, state: dict) -> None:
         return
 
     send_telegram(
-        f"🚀 다음 작업 시작: <b>Task-{task['number']} | {task['title']}</b>\n"
+        f"🚀 다음 작업 시작: <b>Task-{task['number']} | {esc(task['title'])}</b>\n"
         "Claude Code를 자동 실행할게요."
     )
     try:
@@ -491,7 +503,7 @@ def handle_pass(pr_number: str, state: dict) -> None:
         save_state(state)
     except subprocess.CalledProcessError as e:
         send_telegram(
-            f"🚨 Task-{task['number']} 자동 실행 오류:\n<code>{e}</code>\n직접 확인이 필요해요."
+            f"🚨 Task-{task['number']} 자동 실행 오류:\n<code>{esc(e)}</code>\n직접 확인이 필요해요."
         )
 
 
@@ -526,7 +538,7 @@ def handle_retry(pr_number: str, state: dict) -> None:
         subprocess.run(["git", "pull", "origin", branch], check=True)
     except subprocess.CalledProcessError as e:
         send_telegram(
-            f"🚨 브랜치 {branch} 체크아웃 실패. 로컬 git 상태를 확인해주세요.\n<code>{e}</code>"
+            f"🚨 브랜치 {esc(branch)} 체크아웃 실패. 로컬 git 상태를 확인해주세요.\n<code>{esc(e)}</code>"
         )
         return
 
@@ -538,7 +550,7 @@ def handle_retry(pr_number: str, state: dict) -> None:
             append_to_task_log(task_number, "✅ 재작업 완료", f"PR #{pr_number} push — AI 리뷰 재실행 대기 중")
             _commit_logs(f"docs: Task-{task_number} 리뷰 피드백 반영 로그 추가")
     except subprocess.CalledProcessError as e:
-        send_telegram(f"🚨 PR #{pr_number} 재작업 오류:\n<code>{e}</code>")
+        send_telegram(f"🚨 PR #{pr_number} 재작업 오류:\n<code>{esc(e)}</code>")
 
 
 def handle_hold(pr_number: str) -> None:
@@ -555,7 +567,7 @@ def handle_resume(user_text: str, state: dict) -> None:
         state["last_claude_session"] = {"session_id": result["session_id"]}
         save_state(state)
     except subprocess.CalledProcessError as e:
-        send_telegram(f"🚨 Claude Code 세션 재개 오류:\n<code>{e}</code>")
+        send_telegram(f"🚨 Claude Code 세션 재개 오류:\n<code>{esc(e)}</code>")
 
 
 # ── 메인 루프 ─────────────────────────────────────────────────────────────────
@@ -605,7 +617,7 @@ def handle_start_command(state: dict) -> None:
         return
 
     send_telegram(
-        f"🚀 작업 시작: <b>BT-{task['number']} | {task['title']}</b>\n"
+        f"🚀 작업 시작: <b>BT-{task['number']} | {esc(task['title'])}</b>\n"
         "Claude Code를 자동 실행할게요."
     )
     try:
@@ -613,7 +625,7 @@ def handle_start_command(state: dict) -> None:
         state["last_claude_session"] = {"session_id": result["session_id"]}
         save_state(state)
     except subprocess.CalledProcessError as e:
-        send_telegram(f"🚨 BT-{task['number']} 실행 오류:\n<code>{e}</code>")
+        send_telegram(f"🚨 BT-{task['number']} 실행 오류:\n<code>{esc(e)}</code>")
 
 
 def handle_restart_command(args: str) -> None:
@@ -624,7 +636,7 @@ def handle_restart_command(args: str) -> None:
         try:
             pr = get_pr(pr_number)
         except requests.HTTPError as e:
-            send_telegram(f"❌ PR #{pr_number}를 찾지 못했어요:\n<code>{e}</code>")
+            send_telegram(f"❌ PR #{pr_number}를 찾지 못했어요:\n<code>{esc(e)}</code>")
             return
     else:
         pr = get_latest_open_pr()
