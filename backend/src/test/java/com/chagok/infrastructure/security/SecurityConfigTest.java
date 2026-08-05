@@ -1,5 +1,7 @@
 package com.chagok.infrastructure.security;
 
+import com.chagok.infrastructure.security.oauth2.CustomOAuth2UserService;
+import com.chagok.infrastructure.security.oauth2.OAuth2SuccessHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -21,6 +23,12 @@ class SecurityConfigTest {
 
 	@MockitoBean
 	private JwtTokenProvider jwtTokenProvider;
+
+	@MockitoBean
+	private CustomOAuth2UserService customOAuth2UserService;
+
+	@MockitoBean
+	private OAuth2SuccessHandler oAuth2SuccessHandler;
 
 	@Test
 	void should_reject_when_protectedEndpointCalledWithoutAuthentication() throws Exception {
