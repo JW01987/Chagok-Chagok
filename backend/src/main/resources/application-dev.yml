@@ -12,6 +12,36 @@ spring:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT}
       password: ${REDIS_PASSWORD:}
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao:
+            client-id: ${KAKAO_CLIENT_ID}
+            client-secret: ${KAKAO_CLIENT_SECRET}
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            authorization-grant-type: authorization_code
+            scope:
+              - profile_nickname
+              - account_email
+            client-name: Kakao
+            client-authentication-method: client_secret_post
+          apple:
+            client-id: ${APPLE_CLIENT_ID}
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            authorization-grant-type: authorization_code
+            scope: name,email
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+          apple:
+            authorization-uri: https://appleid.apple.com/auth/authorize
+            token-uri: https://appleid.apple.com/auth/token
+            user-info-uri: https://appleid.apple.com/auth/userinfo
+            user-name-attribute: sub
 
 logging:
   level:
@@ -21,6 +51,9 @@ jwt:
   secret: ${JWT_SECRET}
   access-expiration-ms: 900000
   refresh-expiration-ms: 2592000000
+
+encryption:
+  aes-key: ${ENCRYPTION_AES_KEY}
 
 springdoc:
   swagger-ui:

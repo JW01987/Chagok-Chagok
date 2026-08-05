@@ -1,5 +1,7 @@
 package com.chagok.infrastructure.security;
 
+import com.chagok.infrastructure.security.oauth2.CustomOAuth2UserService;
+import com.chagok.infrastructure.security.oauth2.OAuth2SuccessHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -11,7 +13,12 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.Http403ForbiddenEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
@@ -22,6 +29,8 @@ public class SecurityConfig {
 	private static final int BCRYPT_COST_FACTOR = 12;
 
 	private final JwtAuthenticationFilter jwtAuthFilter;
+	private final CustomOAuth2UserService customOAuth2UserService;
+	private final OAuth2SuccessHandler oAuth2SuccessHandler;
 
 	@Bean
 	public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -33,11 +42,19 @@ public class SecurityConfig {
 					"/health",
 					"/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
 					"/api/auth/signup", "/api/auth/login", "/api/auth/reissue",
+					"/oauth2/**", "/login/oauth2/**",
 					"/api/portfolios/**",
 					"/api/simulation/**"
 				).permitAll()
 				.anyRequest().authenticated()
 			)
+			.oauth2Login(oauth2 -> oauth2
+				.userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
+				.successHandler(oAuth2SuccessHandler)
+			)
+			// oauth2Login()이 기본으로 설정하는 로그인 페이지 리다이렉트(302)를 막고,
+			// REST API 응답 규약(인증 실패 시 403)을 그대로 유지한다.
+			.exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(new Http403ForbiddenEntryPoint()))
 			.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
@@ -51,6 +68,13 @@ public class SecurityConfig {
 	@Bean
 	public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
 		return config.getAuthenticationManager();
+	}
+
+	// CustomOAuth2UserService가 이 위임체에 실제 소셜 프로필 조회를 맡긴다.
+	// 인터페이스 타입으로 주입받도록 하여 단위 테스트에서 Mockito로 대체할 수 있게 한다.
+	@Bean
+	public OAuth2UserService<OAuth2UserRequest, OAuth2User> defaultOAuth2UserService() {
+		return new DefaultOAuth2UserService();
 	}
 
 	// jwtAuthFilter는 filterChain()의 addFilterBefore로만 등록한다.
