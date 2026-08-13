@@ -45,22 +45,55 @@ _EMPTY_RESULT = {
     "summary": "코드 변경사항이 없습니다.",
 }
 
-_MAX_DIFF_CHARS = 15_000  # Gemini 토큰 한도 대비
+# Gemini 2.5 Flash는 컨텍스트가 넉넉해서(1M 토큰) 훨씬 크게 잡아도 된다.
+# 그래도 극단적으로 큰 PR을 대비해 상한은 둔다.
+_MAX_DIFF_CHARS = 200_000
+
+
+def _changed_java_files() -> list[str]:
+    """origin/main 대비 변경된 .java 파일 목록.
+
+    예전에는 pathspec을 "src/**/*.java"로 고정해서 backend/src/... 처럼
+    하위 디렉터리에 있는 실제 경로와 전혀 매칭되지 않았다 (repo 구조에
+    묶인 버그). 디렉터리 프리픽스 없는 "*.java"는 git이 어느 깊이에서든
+    파일명으로 매칭해주므로 repo 구조가 바뀌어도 안전하다.
+    """
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "origin/main...HEAD", "--", "*.java"],
+        capture_output=True, text=True,
+    )
+    return [f for f in result.stdout.splitlines() if f]
+
+
+def _diff_for_paths(paths: list[str]) -> str:
+    if not paths:
+        return ""
+    result = subprocess.run(
+        ["git", "diff", "origin/main...HEAD", "--", *paths],
+        capture_output=True, text=True, check=True,
+    )
+    return result.stdout
 
 
 def get_pr_diff() -> str:
-    result = subprocess.run(
-        ["git", "diff", "origin/main...HEAD", "--", "src/**/*.java"],
-        capture_output=True, text=True,
-    )
-    diff = result.stdout
-    if not diff:
-        # paths glob 이 안 먹힐 경우 fallback
+    files = _changed_java_files()
+    if not files:
+        # .java 변경이 없거나 목록을 못 얻었으면 전체 diff로 폴백
         result = subprocess.run(
             ["git", "diff", "origin/main...HEAD"],
             capture_output=True, text=True, check=True,
         )
-        diff = result.stdout
+        return result.stdout[:_MAX_DIFF_CHARS]
+
+    # git diff는 pathspec 인자 순서와 무관하게 항상 트리 순서(경로 알파벳순)로
+    # 출력하기 때문에, "test" 디렉터리가 "main"보다 뒤에 와서 큰 PR에서는
+    # _MAX_DIFF_CHARS에 잘려 테스트 코드가 리뷰 대상에서 통째로 빠지는 일이
+    # 있었다. 테스트 파일 diff를 먼저 뽑아 앞에 붙여서, 잘리더라도 테스트
+    # 코드가 항상 살아남도록 한다.
+    test_files = [f for f in files if "/test/" in f or f.endswith("Test.java")]
+    main_files = [f for f in files if f not in test_files]
+
+    diff = _diff_for_paths(test_files) + _diff_for_paths(main_files)
     return diff[:_MAX_DIFF_CHARS]
 
 
