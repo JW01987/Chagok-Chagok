@@ -15,6 +15,37 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao:
+            client-id: test-kakao-id
+            client-secret: test-kakao-secret
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            authorization-grant-type: authorization_code
+            scope:
+              - profile_nickname
+              - account_email
+            client-name: Kakao
+            client-authentication-method: client_secret_post
+          apple:
+            client-id: test-apple-id
+            client-secret: test-apple-secret
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            authorization-grant-type: authorization_code
+            scope: name,email
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+          apple:
+            authorization-uri: https://appleid.apple.com/auth/authorize
+            token-uri: https://appleid.apple.com/auth/token
+            user-info-uri: https://appleid.apple.com/auth/userinfo
+            user-name-attribute: sub
 
 logging:
   level:
@@ -25,3 +56,6 @@ jwt:
   secret: ${JWT_SECRET:test-secret-key-must-be-at-least-256-bits-long-string}
   access-expiration-ms: 900000
   refresh-expiration-ms: 2592000000
+
+encryption:
+  aes-key: ${ENCRYPTION_AES_KEY:eSmu89BuFyAJhKwsg+Y8C12MYvmXbJMsz2bFKSNMEAg=}

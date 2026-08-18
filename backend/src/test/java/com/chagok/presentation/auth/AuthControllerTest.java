@@ -4,6 +4,8 @@ import com.chagok.application.auth.AuthService;
 import com.chagok.infrastructure.security.JwtAuthenticationFilter;
 import com.chagok.infrastructure.security.JwtTokenProvider;
 import com.chagok.infrastructure.security.SecurityConfig;
+import com.chagok.infrastructure.security.oauth2.CustomOAuth2UserService;
+import com.chagok.infrastructure.security.oauth2.OAuth2SuccessHandler;
 import com.chagok.presentation.auth.dto.LoginResponse;
 import com.chagok.presentation.auth.dto.ReissueResponse;
 import com.chagok.presentation.auth.dto.SignupResponse;
@@ -38,6 +40,12 @@ class AuthControllerTest {
 
 	@MockitoBean
 	private JwtTokenProvider jwtTokenProvider;
+
+	@MockitoBean
+	private CustomOAuth2UserService customOAuth2UserService;
+
+	@MockitoBean
+	private OAuth2SuccessHandler oAuth2SuccessHandler;
 
 	@Test
 	@DisplayName("회원가입 성공 시 201과 사용자 정보를 반환한다")
