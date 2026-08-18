@@ -3,6 +3,8 @@ package com.chagok.presentation.common;
 import com.chagok.infrastructure.security.JwtAuthenticationFilter;
 import com.chagok.infrastructure.security.JwtTokenProvider;
 import com.chagok.infrastructure.security.SecurityConfig;
+import com.chagok.infrastructure.security.oauth2.CustomOAuth2UserService;
+import com.chagok.infrastructure.security.oauth2.OAuth2SuccessHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -23,6 +25,12 @@ class HealthControllerTest {
 
 	@MockitoBean
 	private JwtTokenProvider jwtTokenProvider;
+
+	@MockitoBean
+	private CustomOAuth2UserService customOAuth2UserService;
+
+	@MockitoBean
+	private OAuth2SuccessHandler oAuth2SuccessHandler;
 
 	@Test
 	void should_return200WithStatusUp_when_healthEndpointCalledWithoutAuthentication() throws Exception {
