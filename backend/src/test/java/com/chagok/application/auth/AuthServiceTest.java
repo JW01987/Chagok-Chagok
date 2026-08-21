@@ -1,11 +1,14 @@
 package com.chagok.application.auth;
 
+import com.chagok.application.user.OnboardingService;
 import com.chagok.domain.auth.RefreshToken;
 import com.chagok.domain.auth.RefreshTokenRepository;
 import com.chagok.domain.notification.NotificationSettingsRepository;
 import com.chagok.domain.subscription.SubscriptionPlan;
 import com.chagok.domain.subscription.SubscriptionPlanRepository;
 import com.chagok.domain.subscription.UserSubscriptionRepository;
+import com.chagok.domain.user.GoalType;
+import com.chagok.domain.user.InvestmentType;
 import com.chagok.domain.user.User;
 import com.chagok.domain.user.UserRepository;
 import com.chagok.domain.user.UserStatus;
@@ -19,6 +22,7 @@ import com.chagok.presentation.auth.dto.SignupRequest;
 import com.chagok.presentation.auth.dto.SignupResponse;
 import com.chagok.presentation.common.exception.BusinessException;
 import com.chagok.presentation.common.exception.ErrorCode;
+import com.chagok.presentation.user.dto.OnboardingRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -68,12 +72,15 @@ class AuthServiceTest {
 	@Mock
 	private JwtTokenProvider jwtTokenProvider;
 
+	@Mock
+	private OnboardingService onboardingService;
+
 	@Test
 	@DisplayName("이메일 중복 시 DUPLICATE_EMAIL 예외 발생")
 	void should_throwDuplicateEmailException_when_emailAlreadyExists() {
 		given(userRepository.existsByEmailAndDeletedAtIsNull("test@test.com")).willReturn(true);
 
-		assertThatThrownBy(() -> authService.signup(new SignupRequest("test@test.com", "password1", "진")))
+		assertThatThrownBy(() -> authService.signup(new SignupRequest("test@test.com", "password1", "진", null)))
 			.isInstanceOf(BusinessException.class)
 			.hasMessageContaining("중복");
 
@@ -83,7 +90,7 @@ class AuthServiceTest {
 	@Test
 	@DisplayName("정상 요청 시 회원가입과 알림설정/구독 초기화가 함께 처리된다")
 	void should_createUserWithDefaults_when_signupRequestValid() {
-		SignupRequest request = new SignupRequest("test@test.com", "password1", "진");
+		SignupRequest request = new SignupRequest("test@test.com", "password1", "진", null);
 		SubscriptionPlan freePlan = org.mockito.Mockito.mock(SubscriptionPlan.class);
 
 		given(userRepository.existsByEmailAndDeletedAtIsNull(request.getEmail())).willReturn(false);
@@ -102,12 +109,35 @@ class AuthServiceTest {
 		assertThat(response.getNickname()).isEqualTo(request.getNickname());
 		verify(notificationSettingsRepository).save(any());
 		verify(userSubscriptionRepository).save(any());
+		verify(onboardingService, never()).saveOnboarding(any(), any());
+	}
+
+	@Test
+	@DisplayName("게스트 온보딩 데이터가 있으면 회원가입 시 자동으로 마이그레이션된다")
+	void should_migrateOnboarding_when_signupRequestHasOnboarding() {
+		OnboardingRequest onboardingRequest =
+			new OnboardingRequest(InvestmentType.BALANCED, 100000, GoalType.FREE, null, null, null);
+		SignupRequest request = new SignupRequest("test@test.com", "password1", "진", onboardingRequest);
+		SubscriptionPlan freePlan = org.mockito.Mockito.mock(SubscriptionPlan.class);
+
+		given(userRepository.existsByEmailAndDeletedAtIsNull(request.getEmail())).willReturn(false);
+		given(passwordEncoder.encode(request.getPassword())).willReturn("encoded");
+		given(userRepository.save(any(User.class))).willAnswer(invocation -> {
+			User savedUser = invocation.getArgument(0);
+			setField(savedUser, "id", 1L);
+			return savedUser;
+		});
+		given(subscriptionPlanRepository.findByCode("FREE")).willReturn(Optional.of(freePlan));
+
+		authService.signup(request);
+
+		verify(onboardingService).saveOnboarding(1L, onboardingRequest);
 	}
 
 	@Test
 	@DisplayName("FREE 플랜이 시드되어 있지 않으면 회원가입이 실패한다")
 	void should_throwIllegalStateException_when_freePlanMissing() {
-		SignupRequest request = new SignupRequest("test@test.com", "password1", "진");
+		SignupRequest request = new SignupRequest("test@test.com", "password1", "진", null);
 		given(userRepository.existsByEmailAndDeletedAtIsNull(request.getEmail())).willReturn(false);
 		given(passwordEncoder.encode(request.getPassword())).willReturn("encoded");
 		given(userRepository.save(any(User.class))).willReturn(withId(User.builder().build(), 1L));
