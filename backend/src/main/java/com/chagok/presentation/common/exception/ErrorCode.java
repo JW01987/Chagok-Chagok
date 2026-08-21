@@ -14,7 +14,10 @@ public enum ErrorCode {
 	ACCOUNT_LOCKED(HttpStatus.LOCKED, "AUTH_003", "로그인 실패 횟수를 초과하여 계정이 잠겼습니다."),
 	INVALID_PASSWORD(HttpStatus.UNAUTHORIZED, "AUTH_004", "비밀번호가 일치하지 않습니다."),
 	INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_005", "유효하지 않은 리프레시 토큰입니다."),
-	REVOKED_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_006", "이미 사용되었거나 무효화된 리프레시 토큰입니다.");
+	REVOKED_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_006", "이미 사용되었거나 무효화된 리프레시 토큰입니다."),
+
+	ONBOARDING_ALREADY_COMPLETED(HttpStatus.CONFLICT, "USER_001", "이미 온보딩을 완료했습니다."),
+	ONBOARDING_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_002", "온보딩 정보를 찾을 수 없습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

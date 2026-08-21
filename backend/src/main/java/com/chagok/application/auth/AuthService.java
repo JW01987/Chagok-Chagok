@@ -1,5 +1,6 @@
 package com.chagok.application.auth;
 
+import com.chagok.application.user.OnboardingService;
 import com.chagok.domain.auth.RefreshToken;
 import com.chagok.domain.auth.RefreshTokenRepository;
 import com.chagok.domain.notification.NotificationSettings;
@@ -44,6 +45,7 @@ public class AuthService {
 	private final UserSubscriptionRepository userSubscriptionRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtTokenProvider jwtTokenProvider;
+	private final OnboardingService onboardingService;
 
 	@Transactional
 	public SignupResponse signup(SignupRequest request) {
@@ -65,6 +67,11 @@ public class AuthService {
 		SubscriptionPlan freePlan = subscriptionPlanRepository.findByCode(FREE_PLAN_CODE)
 			.orElseThrow(() -> new IllegalStateException("FREE 플랜이 없습니다"));
 		userSubscriptionRepository.save(UserSubscription.freeOf(user, freePlan));
+
+		// 게스트 온보딩 데이터가 있으면 회원가입과 함께 자동으로 서버에 저장(마이그레이션)한다.
+		if (request.getOnboarding() != null) {
+			onboardingService.saveOnboarding(user.getId(), request.getOnboarding());
+		}
 
 		return new SignupResponse(user.getId(), user.getEmail(), user.getNickname());
 	}
